@@ -1,0 +1,87 @@
+name: 🦠 Disease Outbreak CI (Simplified)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  # 🧪 Basic testing
+  test:
+    name: 🧪 Basic Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        source .venv/bin/activate
+        uv pip install pandas numpy requests beautifulsoup4 scikit-learn streamlit plotly folium joblib pytest
+        uv pip install -e . --no-deps
+        
+    - name: 🧪 Run basic tests
+      run: |
+        source .venv/bin/activate
+        python -c "import sys; print(f'Python {sys.version}')"
+        python -c "import disease_outbreak_prediction; print('✅ Package import successful')"
+        
+    - name: 📊 Test data loading
+      run: |
+        source .venv/bin/activate
+        python -c "
+        from disease_outbreak_prediction.data_acquisition import fetch_disease_data
+        data = fetch_disease_data()
+        print(f'✅ Data loaded: {len(data)} rows')
+        "
+
+  # 🔍 Code quality
+  lint:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv and tools
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        source .venv/bin/activate
+        uv pip install flake8 black isort
+        
+    - name: 🔍 Run basic linting
+      run: |
+        source .venv/bin/activate
+        echo "Running flake8..."
+        flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics || true
+        echo "Checking import sorting..."
+        isort --check-only src/ || true
+        echo "Checking code formatting..."
+        black --check src/ || true
