@@ -1,0 +1,252 @@
+name: 📋 Workflow Configuration Guide
+description: |
+  Complete guide to all GitHub Actions workflows in the Disease Outbreak Prediction project.
+  This file documents all automated workflows, their purposes, and how to use them.
+
+workflows:
+  ci-cd:
+    name: "🦠 Disease Outbreak Prediction CI/CD"
+    file: "ci.yml" 
+    description: "Main CI/CD pipeline with comprehensive testing"
+    triggers:
+      - "Push to main/develop branches"
+      - "Pull requests to main/develop"
+      - "Nightly scheduled runs (2 AM UTC)"
+    features:
+      - "Multi-platform testing (Ubuntu, Windows, macOS)"
+      - "Python 3.10-3.12 compatibility testing"
+      - "Code quality checks (Black, isort, flake8, mypy)"
+      - "Security scanning with Bandit"
+      - "Model training validation"
+      - "Dashboard functionality testing"
+      - "Code coverage reporting"
+    artifacts:
+      - "Test coverage reports"
+      - "Security scan results"
+      - "Code quality metrics"
+
+  model-monitoring:
+    name: "📊 Model Performance Monitoring"
+    file: "model-monitoring.yml"
+    description: "Automated model performance evaluation and retraining"
+    triggers:
+      - "Daily at 8 AM UTC"
+      - "Manual dispatch with force retrain option"
+    features:
+      - "LSTM model accuracy evaluation"
+      - "Random Forest performance assessment"
+      - "Automatic model retraining when performance drops"
+      - "Feature importance analysis"
+      - "Performance trending and alerts"
+    thresholds:
+      lstm_accuracy: 85.0
+      rf_accuracy: 80.0
+    artifacts:
+      - "Performance reports (JSON/Markdown)"
+      - "Model comparison metrics"
+      - "Feature importance charts"
+
+  dependency-updates:
+    name: "🔄 Dependency Updates"
+    file: "dependency-updates.yml"
+    description: "Automated dependency update management"
+    triggers:
+      - "Weekly on Sundays at 6 AM UTC"
+      - "Manual dispatch"
+    features:
+      - "Automated dependency version checking"
+      - "Multi-platform compatibility testing"
+      - "Automatic PR creation for verified updates"
+      - "Rollback capability for failed updates"
+    artifacts:
+      - "Dependency comparison reports"
+      - "Update compatibility test results"
+
+  documentation:
+    name: "📚 Documentation"
+    file: "documentation.yml"
+    description: "Automated documentation generation and deployment"
+    triggers:
+      - "Push to main/develop (when docs change)"
+      - "Pull requests affecting documentation"
+      - "Manual dispatch"
+    features:
+      - "Sphinx API documentation generation"
+      - "GitHub Pages deployment"
+      - "Documentation quality checks"
+      - "Link validation"
+      - "Multi-format output (HTML, PDF)"
+    outputs:
+      - "GitHub Pages site"
+      - "Downloadable documentation packages"
+
+  release:
+    name: "🚀 Release"
+    file: "release.yml"
+    description: "Automated release creation and distribution"
+    triggers:
+      - "Git tags matching v*.*.*"
+      - "Manual dispatch with version input"
+    features:
+      - "Multi-platform artifact building"
+      - "Pre-release testing"
+      - "Automatic changelog generation"
+      - "GitHub release creation"
+      - "Asset uploading"
+    artifacts:
+      - "Cross-platform distributions"
+      - "Release notes"
+      - "Installation packages"
+
+  advanced-analysis:
+    name: "🔬 Advanced Code Analysis"
+    file: "advanced-analysis.yml"
+    description: "Comprehensive code quality and security analysis"
+    triggers:
+      - "Push to main/develop"
+      - "Pull requests to main"
+      - "Weekly on Mondays at 3 AM UTC"
+      - "Manual dispatch"
+    features:
+      - "Advanced security scanning (Bandit, Safety, Semgrep)"
+      - "Code complexity analysis (Radon, McCabe)"
+      - "Dead code detection (Vulture)"
+      - "Performance benchmarking"
+      - "Dependency vulnerability scanning"
+      - "SARIF security reporting"
+    tools:
+      security: ["bandit", "safety", "semgrep", "pip-audit"]
+      quality: ["radon", "xenon", "vulture", "pylint"]
+      testing: ["pytest-benchmark", "hypothesis"]
+    artifacts:
+      - "Security analysis reports"
+      - "Code quality metrics"
+      - "Performance benchmarks"
+      - "Dependency SBOM"
+
+  deployment:
+    name: "🚀 Deployment Pipeline"
+    file: "deployment.yml"
+    description: "Automated deployment to staging and production"
+    triggers:
+      - "Push to main branch"
+      - "Git tags for production deployment"
+      - "Manual dispatch with environment selection"
+    environments:
+      staging:
+        url: "http://staging.disease-prediction.com"
+        auto_deploy: true
+        health_checks: true
+      production:
+        url: "https://disease-prediction.yourdomain.com"
+        auto_deploy: false  # Requires manual approval
+        health_checks: true
+    features:
+      - "Docker containerization"
+      - "Multi-environment deployment"
+      - "Health monitoring"
+      - "Rollback capabilities"
+      - "Production approval gates"
+    artifacts:
+      - "Docker images"
+      - "Deployment configurations"
+      - "Health check reports"
+
+  summary:
+    name: "📋 Workflow Status Summary"
+    file: "summary.yml"
+    description: "Workflow health monitoring and status reporting"
+    triggers:
+      - "After completion of major workflows"
+      - "Daily at 9 AM UTC"
+      - "Manual dispatch"
+    features:
+      - "Workflow status aggregation"
+      - "Health check reporting"
+      - "Automated recommendations"
+      - "Issue-based status tracking"
+    outputs:
+      - "Status summary issues"
+      - "Health reports"
+      - "Maintenance recommendations"
+
+configuration:
+  secrets_required:
+    - name: "GITHUB_TOKEN"
+      description: "Automatically provided by GitHub Actions"
+      usage: "Repository operations, artifact uploads, PR comments"
+    - name: "CODECOV_TOKEN"
+      description: "Optional - for enhanced coverage reporting"
+      usage: "Upload coverage reports to Codecov"
+
+  environment_variables:
+    global:
+      PYTHON_VERSION: "3.10"
+      UV_VERSION: "latest"
+    workflow_specific:
+      REGISTRY: "ghcr.io"
+      IMAGE_NAME: "${{ github.repository }}"
+
+  permissions:
+    contents: "write"  # For creating releases, updating files
+    packages: "write"  # For publishing Docker images
+    security_events: "write"  # For SARIF uploads
+    actions: "read"  # For workflow status checking
+    issues: "write"  # For summary issue creation
+    pull_requests: "write"  # For automated PR creation
+
+usage_guide:
+  getting_started:
+    - "All workflows are automatically triggered based on repository events"
+    - "Manual triggers are available through the Actions tab"
+    - "Check workflow status badges in README.md"
+    
+  customization:
+    - "Modify trigger conditions in individual workflow files"
+    - "Adjust performance thresholds in model-monitoring.yml"
+    - "Configure deployment environments in deployment.yml"
+    
+  troubleshooting:
+    common_issues:
+      - issue: "Workflow permissions errors"
+        solution: "Ensure repository settings allow GitHub Actions to write to repository"
+      - issue: "Docker image build failures"
+        solution: "Check Dockerfile syntax and dependency compatibility"
+      - issue: "Model training timeouts"
+        solution: "Adjust timeout values or optimize training parameters"
+        
+best_practices:
+  - "Review workflow run results regularly"
+  - "Keep dependencies updated through automated PRs"
+  - "Monitor model performance trends"
+  - "Use manual triggers sparingly, prefer automated flows"
+  - "Review and approve production deployments carefully"
+  - "Maintain clear commit messages for better changelogs"
+
+monitoring:
+  dashboards:
+    - name: "GitHub Actions Tab"
+      url: "https://github.com/{owner}/{repo}/actions"
+      description: "Real-time workflow execution status"
+    - name: "Repository Insights"
+      url: "https://github.com/{owner}/{repo}/pulse"
+      description: "Overall repository activity and health"
+  
+  alerts:
+    - "Failed CI/CD runs trigger automatic notifications"
+    - "Model performance degradation creates monitoring alerts"
+    - "Security vulnerabilities generate SARIF reports"
+    - "Deployment failures send immediate notifications"
+
+maintenance:
+  regular_tasks:
+    daily:
+      - "Review model performance reports"
+      - "Check for any failed workflow runs"
+    weekly:
+      - "Review dependency update PRs"
+      - "Check code quality trend reports"
+    monthly:
+      - "Update workflow configurations as needed"
+      - "Review and clean up old artifacts"
+      - "Assess and adjust performance thresholds"

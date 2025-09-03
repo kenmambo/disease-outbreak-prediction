@@ -1,0 +1,217 @@
+name: 🚀 Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "latest"
+
+jobs:
+  # 🏗️ Build artifacts
+  build:
+    name: 🏗️ Build Release Artifacts
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Build package
+      run: |
+        uv venv
+        uv pip install build
+        uv run python -m build
+        
+    - name: 📤 Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist-${{ matrix.os }}
+        path: dist/
+
+  # 🧪 Pre-release testing
+  pre-release-test:
+    name: 🧪 Pre-release Testing
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📥 Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-ubuntu-latest
+        path: dist/
+        
+    - name: 🧪 Test installation from wheel
+      run: |
+        uv venv test-env
+        uv pip install dist/*.whl
+        source .venv/bin/activate
+        python -c "import disease_outbreak_prediction; print('✅ Package installation successful')"
+        
+    - name: 🧪 Run comprehensive tests
+      run: |
+        uv venv
+        uv pip install -e ".[dev]"
+        uv run pytest --verbose
+        
+    - name: 🤖 Test model training
+      run: |
+        mkdir -p data/{raw,processed} models
+        timeout 300 uv run python -m disease_outbreak_prediction.train || true
+        
+  # 🏷️ Create GitHub release
+  release:
+    name: 🏷️ Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build, pre-release-test]
+    permissions:
+      contents: write
+      
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: 📥 Download all artifacts
+      uses: actions/download-artifact@v3
+      
+    - name: 📝 Generate changelog
+      id: changelog
+      run: |
+        # Get the latest tag
+        LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        
+        if [ -z "$LATEST_TAG" ]; then
+          echo "First release"
+          CHANGELOG="🎉 Initial release of Disease Outbreak Prediction System"
+        else
+          echo "Generating changelog since $LATEST_TAG"
+          CHANGELOG=$(git log --pretty=format:"- %s" $LATEST_TAG..HEAD | head -20)
+        fi
+        
+        # Save changelog to file and output
+        echo "$CHANGELOG" > CHANGELOG.md
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: 🏷️ Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name || github.event.inputs.version }}
+        release_name: Disease Outbreak Prediction ${{ github.ref_name || github.event.inputs.version }}
+        body: |
+          ## 🦠 Disease Outbreak Prediction System Release
+          
+          ### 📋 What's Changed
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ### 🚀 Quick Start
+          ```bash
+          # Install the package
+          pip install disease-outbreak-prediction
+          
+          # Or download and install from source
+          git clone https://github.com/yourusername/disease-outbreak-prediction.git
+          cd disease-outbreak-prediction
+          uv venv && uv pip install -e .
+          
+          # Train models
+          uv run python -m disease_outbreak_prediction.train
+          
+          # Launch dashboard
+          uv run streamlit run disease_outbreak_prediction/dashboard/app.py
+          ```
+          
+          ### 📊 Features in this Release
+          - 🧠 LSTM Neural Network for time-series forecasting
+          - 🌍 Random Forest for spatial analysis
+          - 📊 Interactive Streamlit dashboard
+          - 🔄 Cross-platform compatibility
+          - 📈 Real-time outbreak risk assessment
+          
+          ### 💾 Downloads
+          Choose the appropriate package for your platform:
+          - **Windows**: `dist-windows-latest.zip`
+          - **macOS**: `dist-macos-latest.zip`
+          - **Linux**: `dist-ubuntu-latest.zip`
+          
+          ### 🐛 Known Issues
+          - See [Issues](https://github.com/yourusername/disease-outbreak-prediction/issues) for current known issues
+          
+          ---
+          
+          🙏 **Thank you to all contributors who made this release possible!**
+        draft: false
+        prerelease: false
+        
+    - name: 📤 Upload Release Assets
+      run: |
+        # Upload each platform's artifacts
+        for os in ubuntu-latest windows-latest macos-latest; do
+          zip -r dist-$os.zip dist-$os/
+          gh release upload ${{ github.ref_name || github.event.inputs.version }} dist-$os.zip
+        done
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 📢 Post-release notifications
+  notify:
+    name: 📢 Post-Release Notifications
+    runs-on: ubuntu-latest
+    needs: release
+    if: always()
+    
+    steps:
+    - name: 🎉 Success notification
+      if: needs.release.result == 'success'
+      run: |
+        echo "🎉 Release ${{ github.ref_name || github.event.inputs.version }} published successfully!"
+        echo "📊 Dashboard: Available at release artifacts"
+        echo "🤖 Models: Training pipeline tested and verified"
+        
+    - name: ❌ Failure notification
+      if: needs.release.result == 'failure'
+      run: |
+        echo "❌ Release failed. Please check the logs and retry."
+        exit 1

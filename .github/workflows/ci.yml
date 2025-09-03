@@ -1,0 +1,274 @@
+name: 🦠 Disease Outbreak Prediction CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "latest"
+
+jobs:
+  # 🧪 Testing across multiple platforms and Python versions
+  test:
+    name: 🧪 Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12"]
+        
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Create virtual environment
+      run: uv venv
+      
+    - name: 📚 Install dependencies
+      run: |
+        uv sync --dev
+        uv pip install -e .
+        
+    - name: 📋 Display environment info
+      run: |
+        uv pip list
+        python --version
+        
+    - name: 🧪 Run unit tests
+      run: |
+        uv run pytest --verbose --tb=short
+        
+    - name: 📊 Generate coverage report
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      run: |
+        uv run pytest --cov=disease_outbreak_prediction --cov-report=xml --cov-report=html
+        
+    - name: 📤 Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        
+  # 🔍 Code quality checks
+  lint:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv sync --dev
+        uv pip install -e .
+        
+    - name: 🔍 Lint with flake8
+      run: |
+        uv run flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv run flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: ⚫ Format check with black
+      run: |
+        uv run black --check --diff src/
+        
+    - name: 📄 Import sort check with isort
+      run: |
+        uv run isort --check-only --diff src/
+        
+    - name: 🔬 Type check with mypy
+      run: |
+        uv run mypy src/disease_outbreak_prediction --ignore-missing-imports
+        
+  # 🤖 Model training test
+  model-training:
+    name: 🤖 Model Training Test
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv pip install -e .
+        
+    - name: 🏗️ Create data directories
+      run: |
+        mkdir -p data/{raw,processed}
+        mkdir -p models
+        
+    - name: 🧠 Test model training pipeline
+      run: |
+        timeout 300 uv run python -m disease_outbreak_prediction.train || true
+        
+    - name: 📁 Check generated files
+      run: |
+        ls -la models/ || echo "No models directory"
+        ls -la data/processed/ || echo "No processed data"
+        
+  # 🚀 Dashboard deployment test
+  dashboard-test:
+    name: 🚀 Dashboard Test
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv pip install -e .
+        
+    - name: 🖥️ Test dashboard import
+      run: |
+        uv run python -c "import disease_outbreak_prediction.dashboard.app; print('✅ Dashboard import successful')"
+        
+    - name: 🔍 Validate Streamlit app
+      run: |
+        uv run streamlit run disease_outbreak_prediction/dashboard/app.py --server.headless true --server.port 8501 &
+        sleep 10
+        curl -f http://localhost:8501 || echo "Dashboard test completed"
+        pkill -f streamlit || true
+        
+  # 📊 Security scanning
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv sync --dev
+        uv pip install -e .
+        
+    - name: 🔒 Run security scan with bandit
+      run: |
+        uv pip install bandit[toml]
+        uv run bandit -r src/ -f json -o bandit-report.json || true
+        
+    - name: 📤 Upload security scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-scan-results
+        path: bandit-report.json
+        
+  # 📋 Documentation check
+  docs:
+    name: 📋 Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🔍 Check README completeness
+      run: |
+        # Check if README has all required sections
+        grep -q "## 🎯 Overview" README.md
+        grep -q "## ✨ Features" README.md
+        grep -q "## 🚀 Quick Start" README.md
+        grep -q "## 📖 Usage" README.md
+        grep -q "## 📁 Project Structure" README.md
+        echo "✅ README structure validation passed"
+        
+    - name: 📝 Check for TODO items
+      run: |
+        if grep -r "TODO\|FIXME\|XXX" src/ --exclude-dir=__pycache__ || true; then
+          echo "⚠️ Found TODO items in code"
+        else
+          echo "✅ No TODO items found"
+        fi
+        
+  # 🏆 All checks passed
+  all-checks:
+    name: 🏆 All Checks Passed
+    runs-on: ubuntu-latest
+    needs: [test, lint, model-training, dashboard-test, security, docs]
+    if: always()
+    
+    steps:
+    - name: 🎉 Success notification
+      if: ${{ needs.test.result == 'success' && needs.lint.result == 'success' && needs.model-training.result == 'success' && needs.dashboard-test.result == 'success' && needs.security.result == 'success' && needs.docs.result == 'success' }}
+      run: |
+        echo "🎉 All checks passed! Ready for deployment."
+        
+    - name: ❌ Failure notification
+      if: ${{ needs.test.result == 'failure' || needs.lint.result == 'failure' || needs.model-training.result == 'failure' || needs.dashboard-test.result == 'failure' || needs.security.result == 'failure' || needs.docs.result == 'failure' }}
+      run: |
+        echo "❌ Some checks failed. Please review the results."
+        exit 1

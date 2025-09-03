@@ -1,0 +1,358 @@
+name: 📊 Model Performance Monitoring
+
+on:
+  schedule:
+    # Run daily at 8 AM UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: 'Force model retraining'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "latest"
+
+jobs:
+  # 🤖 Model performance evaluation
+  evaluate-models:
+    name: 🤖 Evaluate Model Performance
+    runs-on: ubuntu-latest
+    outputs:
+      lstm-accuracy: ${{ steps.evaluate.outputs.lstm-accuracy }}
+      rf-accuracy: ${{ steps.evaluate.outputs.rf-accuracy }}
+      needs-retraining: ${{ steps.evaluate.outputs.needs-retraining }}
+      
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: actions/setup-uv@v1
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv pip install -e .
+        
+    - name: 🏗️ Prepare environment
+      run: |
+        mkdir -p data/{raw,processed} models
+        
+    - name: 🤖 Train and evaluate models
+      id: evaluate
+      run: |
+        # Train models and capture output
+        python -c "
+        import sys
+        sys.path.insert(0, 'src')
+        
+        from disease_outbreak_prediction.data_acquisition import fetch_disease_data, fetch_climate_data, get_population_data
+        from disease_outbreak_prediction.preprocessing import preprocess_data
+        from disease_outbreak_prediction.models.lstm_model import prepare_lstm_data, train_lstm_model
+        from disease_outbreak_prediction.models.spatial_analysis import spatial_feature_importance
+        import numpy as np
+        from sklearn.metrics import mean_absolute_error, mean_squared_error
+        import json
+        
+        print('📊 Loading and preprocessing data...')
+        disease_data = fetch_disease_data()
+        climate_data = fetch_climate_data('San Juan', '2010-01-01', '2020-12-31')
+        pop_data = get_population_data()
+        processed_data = preprocess_data(disease_data, climate_data, pop_data)
+        
+        print('🧠 Training LSTM model...')
+        X, y, scaler = prepare_lstm_data(processed_data)
+        
+        # Split data for evaluation
+        split_idx = int(0.8 * len(X))
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+        
+        # Train LSTM
+        lstm_model = train_lstm_model(X_train, y_train, epochs=20, batch_size=32)
+        
+        # Evaluate LSTM
+        lstm_predictions = lstm_model.predict(X_test, verbose=0)
+        lstm_mae = mean_absolute_error(y_test, lstm_predictions)
+        lstm_rmse = np.sqrt(mean_squared_error(y_test, lstm_predictions))
+        lstm_accuracy = max(0, 100 - (lstm_mae / np.mean(y_test) * 100))
+        
+        print('🌍 Training Random Forest model...')
+        rf_model, importance = spatial_feature_importance(processed_data)
+        
+        # Evaluate Random Forest on test set
+        test_data = processed_data.iloc[split_idx:].copy()
+        available_features = []
+        potential_features = ['temperature', 'humidity', 'population_density', 'cases_lag_4w']
+        
+        for feature in potential_features:
+            if feature in test_data.columns:
+                available_features.append(feature)
+        
+        if available_features:
+            X_rf_test = test_data[available_features].fillna(test_data[available_features].mean())
+            y_rf_test = test_data['cases'].fillna(test_data['cases'].mean())
+            
+            rf_predictions = rf_model.predict(X_rf_test)
+            rf_mae = mean_absolute_error(y_rf_test, rf_predictions)
+            rf_rmse = np.sqrt(mean_squared_error(y_rf_test, rf_predictions))
+            rf_accuracy = max(0, 100 - (rf_mae / np.mean(y_rf_test) * 100))
+        else:
+            rf_accuracy = 0
+        
+        # Determine if retraining is needed
+        lstm_threshold = 85.0
+        rf_threshold = 80.0
+        needs_retraining = lstm_accuracy < lstm_threshold or rf_accuracy < rf_threshold
+        
+        # Save results
+        results = {
+            'lstm_accuracy': round(lstm_accuracy, 2),
+            'lstm_mae': round(lstm_mae, 4),
+            'lstm_rmse': round(lstm_rmse, 4),
+            'rf_accuracy': round(rf_accuracy, 2), 
+            'rf_mae': round(rf_mae, 4) if 'rf_mae' in locals() else 0,
+            'rf_rmse': round(rf_rmse, 4) if 'rf_rmse' in locals() else 0,
+            'needs_retraining': needs_retraining,
+            'feature_importance': importance.to_dict('records') if not importance.empty else []
+        }
+        
+        with open('model_performance.json', 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        print(f'📊 LSTM Accuracy: {lstm_accuracy:.2f}%')
+        print(f'📊 RF Accuracy: {rf_accuracy:.2f}%')
+        print(f'🔄 Needs Retraining: {needs_retraining}')
+        
+        # Set outputs for GitHub Actions
+        with open('$GITHUB_OUTPUT', 'a') as f:
+            f.write(f'lstm-accuracy={lstm_accuracy:.2f}\n')
+            f.write(f'rf-accuracy={rf_accuracy:.2f}\n')
+            f.write(f'needs-retraining={str(needs_retraining).lower()}\n')
+        "
+        
+    - name: 📊 Generate performance report
+      run: |
+        python -c "
+        import json
+        from datetime import datetime
+        
+        with open('model_performance.json', 'r') as f:
+            results = json.load(f)
+        
+        report = f'''# 📊 Model Performance Report - {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+        
+        ## 🤖 Model Accuracies
+        
+        | Model | Accuracy | MAE | RMSE | Status |
+        |-------|----------|-----|------|--------|
+        | **LSTM** | {results['lstm_accuracy']:.2f}% | {results['lstm_mae']:.4f} | {results['lstm_rmse']:.4f} | {'✅ Good' if results['lstm_accuracy'] >= 85 else '⚠️ Needs Attention'} |
+        | **Random Forest** | {results['rf_accuracy']:.2f}% | {results['rf_mae']:.4f} | {results['rf_rmse']:.4f} | {'✅ Good' if results['rf_accuracy'] >= 80 else '⚠️ Needs Attention'} |
+        
+        ## 📈 Feature Importance (Random Forest)
+        '''
+        
+        if results['feature_importance']:
+            for feat in results['feature_importance'][:5]:  # Top 5 features
+                report += f\"- **{feat['feature']}**: {feat['importance']:.4f}\\n\"
+        else:
+            report += \"- No feature importance data available\\n\"
+        
+        report += f'''
+        ## 🎯 Performance Thresholds
+        - **LSTM Threshold**: 85.0% (Current: {results['lstm_accuracy']:.2f}%)
+        - **Random Forest Threshold**: 80.0% (Current: {results['rf_accuracy']:.2f}%)
+        
+        ## 🔄 Recommendation
+        {'🚨 **Model retraining recommended** - Performance below threshold' if results['needs_retraining'] else '✅ **Models performing well** - No action needed'}
+        
+        ---
+        *Generated automatically by Model Performance Monitoring workflow*
+        '''
+        
+        with open('performance_report.md', 'w') as f:
+            f.write(report)
+        
+        print(report)
+        "
+        
+    - name: 📤 Upload performance artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: model-performance-report
+        path: |
+          model_performance.json
+          performance_report.md
+
+  # 🔄 Retrain models if needed
+  retrain-models:
+    name: 🔄 Retrain Models
+    runs-on: ubuntu-latest
+    needs: evaluate-models
+    if: needs.evaluate-models.outputs.needs-retraining == 'true' || github.event.inputs.force_retrain == 'true'
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: actions/setup-uv@v1
+      with:
+        version: ${{ env.UV_VERSION }}
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv pip install -e .
+        
+    - name: 🏗️ Prepare environment
+      run: |
+        mkdir -p data/{raw,processed} models
+        
+    - name: 🔄 Retrain models with extended parameters
+      run: |
+        python -c "
+        import sys
+        sys.path.insert(0, 'src')
+        
+        from disease_outbreak_prediction.data_acquisition import fetch_disease_data, fetch_climate_data, get_population_data
+        from disease_outbreak_prediction.preprocessing import preprocess_data
+        from disease_outbreak_prediction.models.lstm_model import prepare_lstm_data, train_lstm_model
+        from disease_outbreak_prediction.models.spatial_analysis import spatial_feature_importance
+        
+        print('🔄 Retraining models with enhanced parameters...')
+        
+        # Load and process data
+        disease_data = fetch_disease_data()
+        climate_data = fetch_climate_data('San Juan', '2010-01-01', '2020-12-31')
+        pop_data = get_population_data()
+        processed_data = preprocess_data(disease_data, climate_data, pop_data)
+        
+        # Extended LSTM training
+        X, y, scaler = prepare_lstm_data(processed_data)
+        lstm_model = train_lstm_model(X, y, epochs=100, batch_size=16)  # More epochs, smaller batch
+        
+        # Retrain Random Forest with different parameters
+        rf_model, importance = spatial_feature_importance(processed_data)
+        
+        print('✅ Model retraining completed')
+        print(f'📊 Feature Importance:\\n{importance}')
+        "
+        
+    - name: 📤 Upload retrained models
+      uses: actions/upload-artifact@v3
+      with:
+        name: retrained-models
+        path: models/
+
+  # 📊 Create performance tracking issue
+  track-performance:
+    name: 📊 Track Performance
+    runs-on: ubuntu-latest
+    needs: [evaluate-models, retrain-models]
+    if: always()
+    permissions:
+      issues: write
+      
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 📥 Download performance report
+      uses: actions/download-artifact@v3
+      with:
+        name: model-performance-report
+        
+    - name: 📊 Create or update performance tracking issue
+      run: |
+        # Check if there's an existing performance tracking issue
+        ISSUE_NUMBER=$(gh issue list --label "performance-tracking" --state open --json number --jq '.[0].number' || echo "")
+        
+        ISSUE_BODY=$(cat performance_report.md)
+        
+        if [ -z "$ISSUE_NUMBER" ]; then
+          # Create new issue
+          gh issue create \
+            --title "📊 Model Performance Tracking - $(date +%Y-%m)" \
+            --body "$ISSUE_BODY" \
+            --label "performance-tracking" \
+            --label "monitoring"
+        else
+          # Update existing issue
+          gh issue comment $ISSUE_NUMBER --body "## 📊 Performance Update - $(date +%Y-%m-%d)
+          
+          $ISSUE_BODY"
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 🚨 Alert on poor performance
+  alert-poor-performance:
+    name: 🚨 Alert Poor Performance
+    runs-on: ubuntu-latest
+    needs: evaluate-models
+    if: needs.evaluate-models.outputs.needs-retraining == 'true'
+    permissions:
+      issues: write
+      
+    steps:
+    - name: 🚨 Create performance alert issue
+      run: |
+        gh issue create \
+          --title "🚨 Poor Model Performance Alert - $(date +%Y-%m-%d)" \
+          --body "**Model performance has fallen below acceptable thresholds!**
+          
+          ## 📊 Current Performance
+          - **LSTM Accuracy**: ${{ needs.evaluate-models.outputs.lstm-accuracy }}% (Threshold: 85%)
+          - **Random Forest Accuracy**: ${{ needs.evaluate-models.outputs.rf-accuracy }}% (Threshold: 80%)
+          
+          ## 🔄 Actions Taken
+          - [x] Automatic model retraining initiated
+          - [x] Performance monitoring workflow executed
+          - [ ] Manual review of model parameters needed
+          - [ ] Investigation of data quality issues
+          
+          ## 📋 Next Steps
+          1. Review the retrained models' performance
+          2. Investigate potential data quality issues
+          3. Consider adjusting model hyperparameters
+          4. Evaluate need for additional features
+          
+          **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          --label "urgent" \
+          --label "performance" \
+          --label "models" \
+          --assignee "@me"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ✅ Performance OK notification
+  performance-ok:
+    name: ✅ Performance OK
+    runs-on: ubuntu-latest
+    needs: evaluate-models
+    if: needs.evaluate-models.outputs.needs-retraining == 'false'
+    
+    steps:
+    - name: ✅ Performance satisfactory
+      run: |
+        echo "✅ Model performance is within acceptable ranges"
+        echo "📊 LSTM Accuracy: ${{ needs.evaluate-models.outputs.lstm-accuracy }}%"
+        echo "📊 Random Forest Accuracy: ${{ needs.evaluate-models.outputs.rf-accuracy }}%"
+        echo "🎯 No action required"

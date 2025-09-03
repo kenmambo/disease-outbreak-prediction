@@ -1,0 +1,353 @@
+name: 🔬 Advanced Code Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly on Mondays at 3 AM UTC
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "latest"
+
+jobs:
+  # 🔍 Advanced security analysis
+  security-analysis:
+    name: 🔒 Advanced Security Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv sync --dev
+        uv pip install -e .
+        
+    - name: 🔒 Run Bandit Security Scan
+      run: |
+        uv pip install bandit[toml]
+        uv run bandit -r src/ -f json -o bandit-report.json
+        uv run bandit -r src/ -f txt -o bandit-report.txt
+        
+    - name: 🛡️ Run Safety Check
+      run: |
+        uv pip install safety
+        uv run safety check --json --output safety-report.json || true
+        
+    - name: 🔐 Run Semgrep Analysis
+      uses: semgrep/semgrep-action@v1
+      with:
+        config: >- 
+          p/security-audit
+          p/secrets
+          p/ci
+          p/python
+        generateSarif: "1"
+        
+    - name: 📤 Upload security reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-analysis-reports
+        path: |
+          bandit-report.*
+          safety-report.json
+          
+    - name: 📊 Upload SARIF to GitHub
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: semgrep.sarif
+
+  # 📈 Code quality metrics
+  code-quality-metrics:
+    name: 📈 Code Quality Metrics
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for better analysis
+        
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv sync --dev
+        uv pip install -e .
+        
+    - name: 📊 Install analysis tools
+      run: |
+        uv pip install radon xenon vulture mccabe pylint
+        
+    - name: 🔬 Run code complexity analysis
+      run: |
+        echo "## 📊 Code Complexity Analysis" > complexity-report.md
+        echo "" >> complexity-report.md
+        
+        echo "### Cyclomatic Complexity" >> complexity-report.md
+        echo "\`\`\`" >> complexity-report.md
+        uv run radon cc src/ -a >> complexity-report.md || true
+        echo "\`\`\`" >> complexity-report.md
+        echo "" >> complexity-report.md
+        
+        echo "### Halstead Metrics" >> complexity-report.md
+        echo "\`\`\`" >> complexity-report.md
+        uv run radon hal src/ >> complexity-report.md || true
+        echo "\`\`\`" >> complexity-report.md
+        echo "" >> complexity-report.md
+        
+        echo "### Maintainability Index" >> complexity-report.md
+        echo "\`\`\`" >> complexity-report.md
+        uv run radon mi src/ >> complexity-report.md || true
+        echo "\`\`\`" >> complexity-report.md
+        
+    - name: 🗑️ Find dead code
+      run: |
+        echo "### Dead Code Analysis" >> complexity-report.md
+        echo "\`\`\`" >> complexity-report.md
+        uv run vulture src/ >> complexity-report.md || true
+        echo "\`\`\`" >> complexity-report.md
+        
+    - name: 🎯 Generate pylint report
+      run: |
+        echo "### PyLint Analysis" >> complexity-report.md
+        echo "\`\`\`" >> complexity-report.md
+        uv run pylint src/disease_outbreak_prediction --output-format=text >> complexity-report.md || true
+        echo "\`\`\`" >> complexity-report.md
+        
+    - name: 📤 Upload quality metrics
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-quality-metrics
+        path: complexity-report.md
+
+  # 🧪 Advanced testing
+  advanced-testing:
+    name: 🧪 Advanced Testing Suite
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv sync --dev
+        uv pip install -e .
+        
+    - name: 🧪 Install testing tools
+      run: |
+        uv pip install pytest-benchmark pytest-mock pytest-asyncio pytest-timeout hypothesis
+        
+    - name: 🏗️ Setup test environment
+      run: |
+        mkdir -p data/{raw,processed} models reports
+        
+    - name: ⚡ Run performance benchmarks
+      run: |
+        uv run pytest tests/ --benchmark-only --benchmark-json=benchmark-report.json || true
+        
+    - name: 🔍 Run property-based tests
+      run: |
+        uv run pytest tests/ -m "hypothesis" --tb=short || true
+        
+    - name: ⏱️ Run timeout tests
+      run: |
+        uv run pytest tests/ --timeout=300 --tb=short
+        
+    - name: 📊 Generate comprehensive test report
+      run: |
+        uv run pytest tests/ --cov=disease_outbreak_prediction --cov-report=html --cov-report=xml --cov-report=term --html=reports/pytest-report.html --self-contained-html
+        
+    - name: 📤 Upload test artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: advanced-test-reports
+        path: |
+          reports/
+          htmlcov/
+          benchmark-report.json
+          coverage.xml
+
+  # 🔄 Dependency vulnerability scan
+  dependency-security:
+    name: 🛡️ Dependency Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv sync --dev
+        uv pip install -e .
+        
+    - name: 🔍 Run pip-audit
+      run: |
+        uv pip install pip-audit
+        uv run pip-audit --format=json --output=pip-audit-report.json || true
+        uv run pip-audit --format=cyclonedx-json --output=pip-audit-sbom.json || true
+        
+    - name: 📊 Generate dependency tree
+      run: |
+        uv pip install pipdeptree
+        uv run pipdeptree --json > dependency-tree.json
+        uv run pipdeptree --graph-output png > dependency-graph.png || true
+        
+    - name: 📤 Upload dependency reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dependency-security-reports
+        path: |
+          pip-audit-report.json
+          pip-audit-sbom.json
+          dependency-tree.json
+          dependency-graph.png
+
+  # 📋 Generate comprehensive report
+  generate-analysis-report:
+    name: 📋 Generate Analysis Summary
+    runs-on: ubuntu-latest
+    needs: [security-analysis, code-quality-metrics, advanced-testing, dependency-security]
+    if: always()
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 📥 Download all artifacts
+      uses: actions/download-artifact@v4
+      
+    - name: 📊 Generate comprehensive report
+      run: |
+        cat > analysis-summary.md << 'EOF'
+        # 🔬 Advanced Code Analysis Report
+        
+        Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+        
+        ## 📊 Analysis Overview
+        
+        This report contains the results of advanced code analysis including:
+        
+        - 🔒 **Security Analysis**: Bandit, Safety, and Semgrep scans
+        - 📈 **Code Quality**: Complexity metrics, maintainability index
+        - 🧪 **Advanced Testing**: Performance benchmarks, property-based tests
+        - 🛡️ **Dependency Security**: Vulnerability scans and SBOM generation
+        
+        ## 🎯 Key Findings
+        
+        ### Security Status
+        - Security scans completed with detailed reports available
+        - SARIF results uploaded to GitHub Security tab
+        
+        ### Code Quality
+        - Complexity analysis and maintainability metrics generated
+        - Dead code analysis performed
+        
+        ### Testing Coverage
+        - Comprehensive test suite with benchmarks
+        - HTML coverage reports generated
+        
+        ### Dependencies
+        - Vulnerability scanning completed
+        - Software Bill of Materials (SBOM) generated
+        - Dependency tree visualization created
+        
+        ## 📁 Available Reports
+        
+        - `security-analysis-reports/`: Security scan results
+        - `code-quality-metrics/`: Code complexity and quality metrics
+        - `advanced-test-reports/`: Test coverage and benchmark results
+        - `dependency-security-reports/`: Dependency analysis and SBOM
+        
+        ## 🔗 Quick Links
+        
+        - [Security Tab](../../security): View SARIF results
+        - [Actions](../../actions): View workflow runs
+        - [Code Coverage](https://codecov.io/github/yourusername/disease-outbreak-prediction)
+        
+        ---
+        
+        *This report was generated automatically by the Advanced Analysis workflow.*
+        EOF
+        
+    - name: 📤 Upload analysis summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: analysis-summary-report
+        path: analysis-summary.md
+        
+    - name: 💬 Comment on PR (if applicable)
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const summary = fs.readFileSync('analysis-summary.md', 'utf8');
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: summary
+          });

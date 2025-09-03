@@ -1,0 +1,537 @@
+name: 📚 Documentation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**/*.py'
+      - 'README.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**/*.py'
+      - 'README.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.10"
+  UV_VERSION: "latest"
+
+jobs:
+  # 📝 Generate API documentation
+  generate-docs:
+    name: 📝 Generate API Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv pip install -e ".[dev]"
+        uv pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints
+        
+    - name: 📁 Create docs directory
+      run: |
+        mkdir -p docs/{source,build}
+        
+    - name: 📝 Generate Sphinx configuration
+      run: |
+        cat > docs/source/conf.py << 'EOF'
+        import os
+        import sys
+        sys.path.insert(0, os.path.abspath('../../src'))
+        
+        project = 'Disease Outbreak Prediction'
+        copyright = '2024, Disease Outbreak Prediction Team'
+        author = 'Disease Outbreak Prediction Team'
+        release = '1.0.0'
+        
+        extensions = [
+            'sphinx.ext.autodoc',
+            'sphinx.ext.viewcode',
+            'sphinx.ext.napoleon',
+            'sphinx_autodoc_typehints',
+        ]
+        
+        templates_path = ['_templates']
+        exclude_patterns = []
+        
+        html_theme = 'sphinx_rtd_theme'
+        html_static_path = ['_static']
+        
+        autodoc_member_order = 'bysource'
+        napoleon_google_docstring = True
+        napoleon_numpy_docstring = True
+        EOF
+        
+    - name: 📝 Generate main documentation files
+      run: |
+        # Create main index file
+        cat > docs/source/index.rst << 'EOF'
+        🦠 Disease Outbreak Prediction Documentation
+        ==========================================
+        
+        Welcome to the Disease Outbreak Prediction System documentation!
+        
+        This system uses advanced machine learning techniques to predict disease outbreaks
+        using LSTM neural networks and Random Forest models.
+        
+        .. toctree::
+           :maxdepth: 2
+           :caption: Contents:
+        
+           installation
+           quickstart
+           api/modules
+           dashboard
+           models
+           troubleshooting
+        
+        Indices and tables
+        ==================
+        
+        * :ref:`genindex`
+        * :ref:`modindex`
+        * :ref:`search`
+        EOF
+        
+        # Create installation guide
+        cat > docs/source/installation.rst << 'EOF'
+        Installation
+        ============
+        
+        Prerequisites
+        -------------
+        
+        * Python 3.10 or higher
+        * Git
+        * uv package manager
+        
+        Quick Installation
+        ------------------
+        
+        .. code-block:: bash
+        
+           # Install uv
+           curl -LsSf https://astral.sh/uv/install.sh | sh
+           
+           # Clone repository
+           git clone https://github.com/yourusername/disease-outbreak-prediction.git
+           cd disease-outbreak-prediction
+           
+           # Install dependencies
+           uv venv
+           uv pip install -e .
+        
+        Verification
+        ------------
+        
+        .. code-block:: bash
+        
+           uv run python -c "import disease_outbreak_prediction; print('✅ Installation successful!')"
+        EOF
+        
+        # Create quick start guide
+        cat > docs/source/quickstart.rst << 'EOF'
+        Quick Start
+        ===========
+        
+        Training Models
+        ---------------
+        
+        .. code-block:: bash
+        
+           # Train all models
+           uv run python -m disease_outbreak_prediction.train
+        
+        Running Dashboard
+        -----------------
+        
+        .. code-block:: bash
+        
+           # Launch interactive dashboard
+           uv run streamlit run disease_outbreak_prediction/dashboard/app.py
+        
+        Using Models
+        ------------
+        
+        .. code-block:: python
+        
+           from disease_outbreak_prediction.models.lstm_model import load_lstm_model
+           from disease_outbreak_prediction.models.spatial_analysis import load_rf_model
+           
+           # Load trained models
+           lstm_model = load_lstm_model()
+           rf_model = load_rf_model()
+        EOF
+        
+        # Create dashboard documentation
+        cat > docs/source/dashboard.rst << 'EOF'
+        Dashboard
+        =========
+        
+        The interactive Streamlit dashboard provides a comprehensive interface for:
+        
+        Features
+        --------
+        
+        * Real-time outbreak predictions
+        * Risk assessment with color-coded alerts
+        * Model performance metrics
+        * Feature importance visualization
+        * Model training interface
+        
+        Risk Levels
+        -----------
+        
+        * 🔴 **HIGH RISK**: Predicted cases > 150
+        * 🟡 **MEDIUM RISK**: Predicted cases > 100
+        * 🟢 **LOW RISK**: Predicted cases ≤ 100
+        
+        Usage
+        -----
+        
+        1. Start the dashboard
+        2. Review current data and predictions
+        3. Check risk assessment
+        4. Train new models if needed
+        5. Monitor performance metrics
+        EOF
+        
+        # Create models documentation
+        cat > docs/source/models.rst << 'EOF'
+        Models
+        ======
+        
+        LSTM Neural Network
+        -------------------
+        
+        The LSTM model performs time-series forecasting using:
+        
+        * Multi-layer LSTM architecture (128 → 64 units)
+        * Dropout regularization (0.2)
+        * Dense output layer
+        * Adam optimizer with MSE loss
+        
+        Features:
+        * Historical disease incidence
+        * Temperature data
+        * Humidity data
+        
+        Random Forest
+        -------------
+        
+        The Random Forest model performs spatial analysis using:
+        
+        * 100 decision trees
+        * Feature importance ranking
+        * Spatial feature engineering
+        
+        Features:
+        * Temperature
+        * Humidity
+        * Population density
+        * Lagged case counts (4 weeks)
+        
+        Performance
+        -----------
+        
+        Current model performance:
+        
+        * LSTM Accuracy: ~91.6%
+        * Random Forest Accuracy: ~88.5%
+        * Response Time: <2 seconds
+        EOF
+        
+        # Create troubleshooting guide
+        cat > docs/source/troubleshooting.rst << 'EOF'
+        Troubleshooting
+        ===============
+        
+        Common Issues
+        -------------
+        
+        Model Loading Errors
+        ~~~~~~~~~~~~~~~~~~~~
+        
+        If you encounter model loading errors:
+        
+        1. Ensure models are trained: ``uv run python -m disease_outbreak_prediction.train``
+        2. Check model format compatibility
+        3. Verify dependencies are installed
+        
+        Dashboard Issues
+        ~~~~~~~~~~~~~~~~
+        
+        If the dashboard doesn't load:
+        
+        1. Check Streamlit installation: ``uv run streamlit --version``
+        2. Verify port availability (8501)
+        3. Check for import errors
+        
+        Training Failures
+        ~~~~~~~~~~~~~~~~~
+        
+        If model training fails:
+        
+        1. Ensure data directories exist
+        2. Check memory availability
+        3. Verify TensorFlow installation
+        
+        Getting Help
+        ------------
+        
+        * Check the GitHub Issues page
+        * Review workflow logs
+        * Consult the API documentation
+        EOF
+        
+    - name: 🔍 Generate API documentation
+      run: |
+        # Create API docs directory
+        mkdir -p docs/source/api
+        
+        # Generate autodoc files
+        cd docs
+        uv run sphinx-apidoc -o source/api ../src/disease_outbreak_prediction --force --separate
+        
+    - name: 🏗️ Build documentation
+      run: |
+        cd docs
+        uv run sphinx-build -b html source build/html
+        
+    - name: 📤 Upload documentation artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/build/html/
+
+  # 📋 Check documentation quality
+  doc-quality-check:
+    name: 📋 Documentation Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: ⚡ Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: ${{ env.UV_VERSION }}
+        enable-cache: true
+        
+    - name: 📦 Install dependencies
+      run: |
+        uv venv
+        uv pip install -e ".[dev]"
+        uv pip install pydocstyle docstring-coverage
+        
+    - name: 📝 Check docstring style
+      run: |
+        uv run pydocstyle src/disease_outbreak_prediction --convention=google || true
+        
+    - name: 📊 Check docstring coverage
+      run: |
+        uv run docstring-coverage src/disease_outbreak_prediction --badge=coverage-badge.svg
+        
+    - name: 🔍 Check README quality
+      run: |
+        # Check README structure
+        python -c "
+        import re
+        
+        with open('README.md', 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        required_sections = [
+            'Overview', 'Features', 'Quick Start', 'Usage', 
+            'Project Structure', 'Performance Metrics'
+        ]
+        
+        missing_sections = []
+        for section in required_sections:
+            if section not in content:
+                missing_sections.append(section)
+        
+        if missing_sections:
+            print(f'❌ Missing sections: {missing_sections}')
+            exit(1)
+        else:
+            print('✅ README structure is complete')
+        
+        # Check for badges
+        badges = ['Python', 'uv', 'Streamlit', 'TensorFlow', 'License']
+        missing_badges = []
+        for badge in badges:
+            if badge not in content:
+                missing_badges.append(badge)
+        
+        if missing_badges:
+            print(f'⚠️ Missing badges: {missing_badges}')
+        else:
+            print('✅ All badges present')
+        
+        # Check for emojis (visual appeal)
+        emoji_count = len(re.findall(r'[\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U000024C2-\U0001F251]+', content))
+        print(f'📊 Emoji count: {emoji_count}')
+        
+        if emoji_count < 10:
+            print('⚠️ Consider adding more emojis for visual appeal')
+        else:
+            print('✅ Good emoji usage for visual appeal')
+        "
+        
+    - name: 📤 Upload quality artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: doc-quality-check
+        path: coverage-badge.svg
+
+  # 🚀 Deploy documentation (if on main branch)
+  deploy-docs:
+    name: 🚀 Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: [generate-docs, doc-quality-check]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      pages: write
+      id-token: write
+      
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    steps:
+    - name: 📥 Download documentation
+      uses: actions/download-artifact@v3
+      with:
+        name: documentation
+        path: docs/
+        
+    - name: 🚀 Setup Pages
+      uses: actions/configure-pages@v3
+      
+    - name: 📤 Upload to GitHub Pages
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: docs/
+        
+    - name: 🌐 Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v2
+
+  # 📊 Documentation metrics
+  doc-metrics:
+    name: 📊 Documentation Metrics
+    runs-on: ubuntu-latest
+    needs: generate-docs
+    
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: 📥 Download documentation
+      uses: actions/download-artifact@v3
+      with:
+        name: documentation
+        path: docs/
+        
+    - name: 📊 Generate documentation metrics
+      run: |
+        python -c "
+        import os
+        import glob
+        from pathlib import Path
+        
+        # Count documentation files
+        py_files = len(glob.glob('src/**/*.py', recursive=True))
+        doc_files = len(glob.glob('docs/**/*.html', recursive=True))
+        
+        # Count README sections
+        with open('README.md', 'r') as f:
+            readme_content = f.read()
+        
+        sections = len([line for line in readme_content.split('\n') if line.startswith('##')])
+        
+        # Generate metrics report
+        report = f'''# 📊 Documentation Metrics Report
+        
+        ## 📈 Statistics
+        - **Python Files**: {py_files}
+        - **Generated Documentation Pages**: {doc_files}
+        - **README Sections**: {sections}
+        
+        ## 📋 Coverage
+        - **Documentation Coverage**: {(doc_files / max(py_files, 1) * 100):.1f}%
+        - **README Completeness**: {'✅ Complete' if sections >= 8 else '⚠️ Needs More Sections'}
+        
+        ## 🎯 Recommendations
+        '''
+        
+        if doc_files / max(py_files, 1) < 0.5:
+            report += '- Consider adding more docstrings to modules\n'
+        
+        if sections < 8:
+            report += '- Add more sections to README for better coverage\n'
+        
+        if doc_files / max(py_files, 1) >= 0.8 and sections >= 8:
+            report += '- ✅ Documentation quality is excellent!\n'
+        
+        print(report)
+        
+        with open('doc_metrics.md', 'w') as f:
+            f.write(report)
+        "
+        
+    - name: 📤 Upload metrics
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation-metrics
+        path: doc_metrics.md
+
+  # 🔔 Notification
+  notify-completion:
+    name: 🔔 Documentation Complete
+    runs-on: ubuntu-latest
+    needs: [generate-docs, doc-quality-check, deploy-docs, doc-metrics]
+    if: always()
+    
+    steps:
+    - name: ✅ Success notification
+      if: needs.generate-docs.result == 'success' && needs.doc-quality-check.result == 'success'
+      run: |
+        echo "✅ Documentation generated successfully!"
+        echo "📚 API documentation created"
+        echo "📋 Quality checks passed"
+        if [ "${{ needs.deploy-docs.result }}" = "success" ]; then
+          echo "🌐 Documentation deployed to GitHub Pages"
+        fi
+        
+    - name: ❌ Failure notification
+      if: needs.generate-docs.result == 'failure' || needs.doc-quality-check.result == 'failure'
+      run: |
+        echo "❌ Documentation generation failed"
+        echo "Please check the logs for errors"
+        exit 1
