@@ -5,8 +5,8 @@ on:
     workflows: ["🦠 Disease Outbreak Prediction CI/CD", "📊 Model Performance Monitoring", "🔄 Dependency Updates", "🔬 Advanced Code Analysis", "🚀 Deployment Pipeline"]
     types: [completed]
   schedule:
-    # Generate summary daily at 9 AM UTC
-    - cron: '0 9 * * *'
+    # Generate summary monthly on the 1st at 9 AM UTC
+    - cron: '0 9 1 * *'
   workflow_dispatch:
 
 jobs:
@@ -22,6 +22,15 @@ jobs:
     steps:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
+      
+    - name: 🛠️ Install GitHub CLI
+      run: |
+        type -p curl >/dev/null || (apt update && apt install curl -y)
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+          && apt update \
+          && apt install gh -y
       
     - name: 📊 Generate workflow status summary
       run: |
@@ -42,6 +51,7 @@ jobs:
         | 🚀 Release | ![Status](https://github.com/${{ github.repository }}/workflows/🚀%20Release/badge.svg) | On Tag | Manual/Tags |
         | 🔬 Advanced Analysis | ![Status](https://github.com/${{ github.repository }}/workflows/🔬%20Advanced%20Code%20Analysis/badge.svg) | Weekly Mondays | Mondays 3 AM UTC |
         | 🚀 Deployment | ![Status](https://github.com/${{ github.repository }}/workflows/🚀%20Deployment%20Pipeline/badge.svg) | On Main/Tags | On Push to Main |
+        | 📋 Workflow Summary | ![Status](https://github.com/${{ github.repository }}/workflows/📋%20Workflow%20Status%20Summary/badge.svg) | Monthly | 1st of Month 9 AM UTC |
         
         ## 🎯 Quick Actions
         
@@ -94,7 +104,7 @@ jobs:
         
         ---
         
-        🤖 *This summary is automatically generated and updated daily*
+        🤖 *This summary is automatically generated and updated monthly on the 1st of each month*
         EOF
         
     - name: 📤 Create or update summary issue
@@ -143,21 +153,15 @@ jobs:
         # Check if it's time for various maintenance tasks
         now = datetime.now()
         
-        # Weekly recommendations
-        if now.weekday() == 0:  # Monday
-            recommendations.extend([
-                '🔄 Consider reviewing dependency updates from yesterday',
-                '📊 Check model performance metrics from weekend runs',
-                '📝 Review any failed workflow runs from the past week'
-            ])
-        
-        # Monthly recommendations  
-        if now.day <= 7 and now.day > 0:  # First week of month
-            recommendations.extend([
-                '🏷️ Consider creating a new release if significant changes accumulated',
-                '📚 Review and update documentation for any new features',
-                '🧹 Clean up old workflow artifacts and logs'
-            ])
+        # Monthly recommendations (since this workflow runs monthly)
+        recommendations.extend([
+            '🏷️ Consider creating a new release if significant changes accumulated',
+            '📚 Review and update documentation for any new features',
+            '🧹 Clean up old workflow artifacts and logs',
+            '🔄 Review dependency updates from the past month',
+            '📊 Check model performance metrics from the past month',
+            '📝 Review any failed workflow runs from the past month'
+        ])
         
         # Always applicable
         recommendations.extend([
