@@ -25,21 +25,22 @@ jobs:
       lstm-accuracy: ${{ steps.evaluate.outputs.lstm-accuracy }}
       rf-accuracy: ${{ steps.evaluate.outputs.rf-accuracy }}
       needs-retraining: ${{ steps.evaluate.outputs.needs-retraining }}
-      
+
     steps:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
-      
+
     - name: 🐍 Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-        
+
     - name: ⚡ Install uv
-      uses: actions/setup-uv@v1
+      uses: astral-sh/setup-uv@v2
       with:
         version: ${{ env.UV_VERSION }}
-        
+        enable-cache: true
+
     - name: 📦 Install dependencies
       run: |
         uv venv
@@ -201,21 +202,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: evaluate-models
     if: needs.evaluate-models.outputs.needs-retraining == 'true' || github.event.inputs.force_retrain == 'true'
-    
+
     steps:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4
-      
+
     - name: 🐍 Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-        
+
     - name: ⚡ Install uv
-      uses: actions/setup-uv@v1
+      uses: astral-sh/setup-uv@v2
       with:
         version: ${{ env.UV_VERSION }}
-        
+        enable-cache: true
+
     - name: 📦 Install dependencies
       run: |
         uv venv
